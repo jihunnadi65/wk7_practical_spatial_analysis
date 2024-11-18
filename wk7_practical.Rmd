@@ -1,6 +1,92 @@
+Week 7 Principles of Spatial Analysis - Geodemographic Classification
 
 ```{r}
-
 library(usethis)
+library(tidyverse)
+library(janitor)
+library(ggcorrplot)
+library(cluster)
+library(factorextra)
+library(sf)
+library(tmap)
+library(here)
+```
+
+Load individual csv files that we downloaded into R
+
+```{r}
+# load age data
+lsoa_age <- read_csv(here::here("wk7_data", "London-LSOA-AgeGroup.csv"))
+
+# load country of birth data
+lsoa_cob <- read_csv(here::here("wk7_data", "London-LSOA-Country-of-Birth.csv"))
+
+# load ethnicity data
+lsoa_eth <- read_csv(here::here("wk7_data", "London-LSOA-Ethnicity.csv"))
+
+# load language data
+lsoa_lan <- read_csv(here::here("wk7_data", "London-LSOA-MainLanguage.csv"))
+```
+
+Since all the data are stored in long format, we need to transform it into a wide format. We will clean up column names as well.
+
+```{r}
+# clean names, pivot and clean names again
+lsoa_age_wide <- lsoa_age %>% 
+  janitor::clean_names() %>% 
+  tidyr::pivot_wider(id_cols = "lower_layer_super_output_areas_code", names_from = "age_5_categories", values_from = "observation") %>%
+  janitor::clean_names()
+
+# inspect
+View(lsoa_age_wide)
+```
+
+To account for the non-uniformity of the areal units, we further need to convert the observations to proportions
+
+```{r}
+# total observations
+lsoa_age_wide <- lsoa_age_wide %>% 
+  rowwise() %>% 
+  mutate(age_pop = sum(across(2:6)))
+
+# total proportions, select columns
+lsoa_age_wide <- lsoa_age_wide %>% 
+  mutate(across(2:6, ~./age_pop)) %>% 
+  select(1:6)
+
+# inspect
+head(lsoa_age_wide)
+```
+
+Looks much better. We can do the same for the country of birth data
+
+```{r}
+# prepare country of birth data
+lsoa_cob_wide <- lsoa_cob %>% 
+  janitor::clean_names() %>% 
+  tidyr::pivot_wider(id_cols = "lower_layer_super_output_areas_code", names_from = "country_of_birth_8_categories", values_from = "observation") %>% 
+  janitor::clean_names()
+(lsoa_cob_wide)
+
+# proportions, select columns
+lsoa_cob_wide <- lsoa_cob_wide %>% 
+  rowwise() %>% 
+  mutate(cob_pop = sum(across(2:9))) %>% 
+  mutate(across(2:9, ~./cob_pop)) %>% 
+  select(-2, -10)
+
+View(lsoa_cob_wide)
+```
+
+Do the same for ethnicity and language datasets
+
+```{r}
+# ethniciy data
+lsoa_eth_wide <- lsoa_eth %>% 
+  janitor::clean_names() %>% 
+  tidyr::pivot_wider(id_cols = "lower_layer_super_output_areas_code", names_from = "ethnic_group_20_categories", values_from = "observation") %>% 
+  janitor::clean_names()
+
+# proportions, select columns
 ```
 
