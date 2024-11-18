@@ -3,7 +3,7 @@
     "path": "C:/Users/jihun/Desktop/SGDS/GEOG0114 - Principles of Spatial Analysis/Week 7/wk7_practical.Rmd",
     "project_path": "wk7_practical.Rmd",
     "type": "r_markdown",
-    "hash": "103130027",
+    "hash": "3052848019",
     "contents": "",
     "dirty": false,
     "created": 1731953335875.0,
@@ -13,15 +13,15 @@
         "tempName": "Untitled1",
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "3,0",
+        "cursorPosition": "4,0",
         "scrollLine": "0"
     },
     "folds": "",
-    "lastKnownWriteTime": 1731953409,
+    "lastKnownWriteTime": 1731954070,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1731953409245,
+    "last_content_update": 1731954070460,
     "read_only": false,
     "read_only_alternatives": []
 }
