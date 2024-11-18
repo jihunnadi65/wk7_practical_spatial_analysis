@@ -6,7 +6,7 @@ library(tidyverse)
 library(janitor)
 library(ggcorrplot)
 library(cluster)
-library(factorextra)
+library(factoextra)
 library(sf)
 library(tmap)
 library(here)
@@ -88,5 +88,175 @@ lsoa_eth_wide <- lsoa_eth %>%
   janitor::clean_names()
 
 # proportions, select columns
+lsoa_eth_wide <-  lsoa_eth_wide %>% 
+  rowwise() %>% 
+  mutate(eth_pop = sum(across(2:21))) %>% 
+  mutate(across(2:21, ~./eth_pop)) %>% 
+  select(-2, -22)
+
+# language data
+lsoa_lan_wide <- lsoa_lan %>% 
+  janitor::clean_names() %>% 
+  tidyr::pivot_wider(id_cols = "lower_layer_super_output_areas_code", names_from = "main_language_11_categories", values_from = "observation") %>% 
+  janitor::clean_names()
+
+# proportions
+lsoa_lan_wide <- lsoa_lan_wide %>%
+  rowwise() %>% 
+  mutate(lan_pop = sum(across(2:12))) %>% 
+  mutate(across(2:12, ~./lan_pop)) %>% 
+  select(-2, -11, -13)
 ```
 
+Examine the distribution of our variables by creating boxplots for each variable
+
+```{r}
+# wide to long
+lsoa_age_wd <- lsoa_age_wide %>% 
+  pivot_longer(cols = c(2:5), names_to = "agegroup", values_to = "count")
+
+# facet age
+ggplot(lsoa_age_wd, aes(y = count)) + geom_boxplot() + facet_wrap(~agegroup, ncol = 2) + theme_minimal() + ylab("")
+```
+
+```{r}
+# join
+lsoa_df <- lsoa_age_wide %>% 
+  left_join(lsoa_cob_wide, by = "lower_layer_super_output_areas_code") %>% 
+  left_join(lsoa_eth_wide, by = "lower_layer_super_output_areas_code") %>% 
+  left_join(lsoa_lan_wide, by = "lower_layer_super_output_areas_code")
+
+# calculate proportion of zeroes
+zero_prop <- sapply(lsoa_df[2:41], function(x) {
+  mean(x == 0)
+})
+
+# extract variables with high proportion of zeroes
+idx <- which(zero_prop > 0.25)
+
+# inspect
+idx
+```
+
+```{r}
+# remove variable swith high proportion of zeroes
+lsoa_df <- lsoa_df %>% 
+  select(-white_gypsy_or_irish_traveller,
+         -any_other_uk_languages,
+         -oceanic_or_australian_languages,
+         -north_or_south_american_languages)
+```
+
+```{r}
+# inspect variable names
+names(lsoa_df)
+```
+
+```{r}
+# change variable names to index to improve visualisation
+lsoa_df_vis <- lsoa_df
+names(lsoa_df_vis)[2:37] <- paste0("v", sprintf("%02d", 1:36))
+
+# correlation matrix
+cor_mat <- cor(lsoa_df_vis[, -1])
+
+# correlation plot
+ggcorrplot(cor_mat, outline.col = "#ffffff", tl.cex = 8, legend.title = "Correlation")
+```
+
+We define a weak correlation as lying between 0 and 0.40, moderate as between 0.41 and 0.65, and strong as between 0.66 and 0.80. However, here we decide to retain all variables to maintain representation
+
+```{r}
+# standardisation of input variables ensures that each variable contributes equally to the clustering process
+
+# inverse hyperbolic sine on all variables
+lsoa_df_vis[, -1] <- sapply(lsoa_df_vis[-1], asinh)
+
+# range standardise across all variables
+lsoa_df_vis[, -1] <- sapply(lsoa_df_vis[-1], function(x) {
+  (x - min(x)/(max(x) - min(x)))
+})
+```
+
+Selecting the number of clusters using the elbow method
+
+```{r}
+# elbow plot
+fviz_nbclust(lsoa_df_vis[, -1], kmeans, nstart = 100, iter.max = 100, method = "wss")
+```
+
+k-means clustering
+
+```{r}
+# set seed for reproducibility
+set.seed(999)
+
+# k-means
+lsoa_clus <- kmeans(lsoa_df[, -1], centers = 6, nstart = 100, iter.max = 100)
+```
+
+```{r}
+# inspect
+lsoa_clus
+```
+
+Visualising clusters
+
+We can compare the global mean values of each variable with the mean values specific to each cluster
+
+```{r}
+# global means
+glob_means <- colMeans(lsoa_df_vis[, -1])
+
+# add clusters to input data
+lsoa_df_vis_clustered <- cbind(lsoa_df_vis, cluster = lsoa_clus$cluster)
+
+View(lsoa_df_vis_clustered)
+
+# cluster means
+cluster_means <- lsoa_df_vis_clustered %>% 
+  group_by(cluster) %>% 
+  summarise(across(2:37, mean))
+
+# difference
+cluster_diffs <- cluster_means %>% 
+  mutate(across(2:37, ~. -glob_means[cur_column()]))
+```
+
+These comparisons can be visualised using a radial bar plot
+
+```{r}
+# to long format
+cluster_diffs_long <- cluster_diffs %>% 
+  pivot_longer(!cluster, names_to = "vars", values_to = "score")
+
+# facet clusters
+ggplot(cluster_diffs_long, aes(x = factor(vars), y = score)) + geom_bar(stat = "identity") + coord_radial(rotate.angle = TRUE, expand = FALSE) + facet_wrap(~cluster, ncol = 3) + theme_minimal() + theme(axis.text.x = element_text(size = 7)) + xlab("") + ylab("")
+```
+
+Of course, we can also map the results
+
+```{r}
+# read the spatial dataset
+lsoa21 <- st_read(here::here("wk7_data", "London-LSOA-2021.gpkg"))
+```
+
+```{r}
+# join
+lsoa21 <- cbind(lsoa21, cluster = lsoa_clus$cluster)
+
+# shape, polygon
+tm_shape(lsoa21) +
+  # specify columns, colours
+  tm_polygons(
+    col = "cluster",
+    palette = c("#feebe2", "#fbb4b9", "#f768a1", "#c51b8a", "#7a0177"),
+    border.col = "#ffffff",
+    border.alpha = 0.1,
+    title = "Cluster Number"
+  ) +
+tm_layout(legend.outside = FALSE, legend.position = c("right", "bottom"), frame = FALSE)
+  )
+```
+
+This is the end of the practical.
